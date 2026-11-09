@@ -74,6 +74,8 @@ const (
 	ApiNameQwenAsyncTask               ApiName = "qwen/v1/tasks"
 	ApiNameQwenV1Rerank                ApiName = "qwen/v1/rerank"
 	ApiNameQwenV1Conversations         ApiName = "qwen/v1/conversations"
+	ApiNameQwenMultimodalEmbeddings    ApiName = "qwen/v1/embeddings/multimodal"
+	ApiNameDoubaoMultimodalEmbeddings  ApiName = "doubao/v3/embeddings/multimodal"
 	ApiNameGeminiGenerateContent       ApiName = "gemini/v1beta/generatecontent"
 	ApiNameGeminiStreamGenerateContent ApiName = "gemini/v1beta/streamgeneratecontent"
 	ApiNameAnthropicMessages           ApiName = "anthropic/v1/messages"
@@ -124,8 +126,12 @@ const (
 	PathCohereV1Rerank = "/v1/rerank"
 
 	// Qwen
-	PathQwenV1Reranks       = "/v1/reranks"
-	PathQwenV1Conversations = "/v1/conversations"
+	PathQwenV1Reranks            = "/v1/reranks"
+	PathQwenV1Conversations      = "/v1/conversations"
+	PathQwenMultimodalEmbeddings = "/v1/multimodal-embedding"
+
+	// Doubao
+	PathDoubaoMultimodalEmbeddings = "/v1/embeddings/multimodal"
 
 	providerTypeMoonshot   = "moonshot"
 	providerTypeAzure      = "azure"
@@ -219,6 +225,10 @@ const (
 	basePathHandlingRemovePrefix basePathHandling = "removePrefix"
 	basePathHandlingPrepend      basePathHandling = "prepend"
 )
+
+func (a ApiName) IsNativeMultimodalEmbeddings() bool {
+	return a == ApiNameQwenMultimodalEmbeddings || a == ApiNameDoubaoMultimodalEmbeddings
+}
 
 type providerInitializer interface {
 	ValidateConfig(*ProviderConfig) error
@@ -742,6 +752,8 @@ func (c *ProviderConfig) FromJson(json gjson.Result) {
 		switch capability {
 		case string(ApiNameChatCompletion),
 			string(ApiNameEmbeddings),
+			string(ApiNameQwenMultimodalEmbeddings),
+			string(ApiNameDoubaoMultimodalEmbeddings),
 			string(ApiNameImageGeneration),
 			string(ApiNameImageVariation),
 			string(ApiNameImageEdit),
@@ -1334,6 +1346,10 @@ func (c *ProviderConfig) handleRequestBody(
 		return types.ActionContinue, err
 	}
 
+	if c.IsRetryOnFailureEnabled() && apiName.IsNativeMultimodalEmbeddings() {
+		ctx.SetContext(CtxRequestBody, append([]byte(nil), body...))
+	}
+
 	if apiName == ApiNameChatCompletion {
 		if c.context == nil {
 			return types.ActionContinue, replaceRequestBody(body)
@@ -1434,6 +1450,14 @@ func (c *ProviderConfig) handleRequestHeaders(provider Provider, ctx wrapper.Htt
 	// Apply providerDomain if configured (overrides any domain set by the provider)
 	if c.providerDomain != "" {
 		util.OverwriteRequestHostHeader(headers, c.providerDomain)
+	}
+
+	if c.IsRetryOnFailureEnabled() && apiName.IsNativeMultimodalEmbeddings() {
+		retryHeaders := make(http.Header)
+		retryHeaders.Set(":authority", headers.Get(":authority"))
+		retryHeaders.Set(":path", headers.Get(":path"))
+		retryHeaders.Set(util.HeaderContentType, headers.Get(util.HeaderContentType))
+		ctx.SetContext(ctxNativeRetryRequestHeaders, retryHeaders)
 	}
 
 	util.ReplaceRequestHeaders(headers)

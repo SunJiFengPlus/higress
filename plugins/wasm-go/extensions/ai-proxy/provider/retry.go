@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	ctxRetryCount              = "retryCount"
-	defaultRetryFailureTimeout = 30 * 1000
+	ctxRetryCount                = "retryCount"
+	ctxNativeRetryRequestHeaders = "nativeRetryRequestHeaders"
+	defaultRetryFailureTimeout   = 30 * 1000
 )
 
 type retryOnFailure struct {
@@ -133,16 +134,28 @@ func (c *ProviderConfig) sendRetryRequest(
 	ctx.SetContext(c.failover.ctxApiTokenInUse, apiTokenInUse)
 	requestBody := ctx.GetByteSliceContext(CtxRequestBody, []byte(""))
 	log.Debugf("get original requestBody:%s", requestBody)
-	modifiedHeaders, modifiedBody, err := c.transformRequestHeadersAndBody(ctx, activeProvider, [][2]string{
-		{"content-type", "application/json"},
-		{":authority", ctx.GetStringContext(CtxRequestHost, "")},
-		{":path", ctx.GetStringContext(CtxRequestPath, "")},
-	}, requestBody)
-	if err != nil {
-		return fmt.Errorf("sendRetryRequest failed to transform request headers and body: %v", err)
+	var modifiedHeaders http.Header
+	modifiedBody := requestBody
+	if apiName.IsNativeMultimodalEmbeddings() {
+		headers, ok := ctx.GetContext(ctxNativeRetryRequestHeaders).(http.Header)
+		if !ok {
+			return errors.New("missing native retry request headers")
+		}
+		modifiedHeaders = headers.Clone()
+		util.OverwriteRequestAuthorizationHeader(modifiedHeaders, "Bearer "+apiTokenInUse)
+	} else {
+		var err error
+		modifiedHeaders, modifiedBody, err = c.transformRequestHeadersAndBody(ctx, activeProvider, [][2]string{
+			{"content-type", "application/json"},
+			{":authority", ctx.GetStringContext(CtxRequestHost, "")},
+			{":path", ctx.GetStringContext(CtxRequestPath, "")},
+		}, requestBody)
+		if err != nil {
+			return fmt.Errorf("sendRetryRequest failed to transform request headers and body: %v", err)
+		}
 	}
 
-	err = retryClient.Post(generateUrl(modifiedHeaders), util.HeaderToSlice(modifiedHeaders), modifiedBody,
+	err := retryClient.Post(generateUrl(modifiedHeaders), util.HeaderToSlice(modifiedHeaders), modifiedBody,
 		func(statusCode int, responseHeaders http.Header, responseBody []byte) {
 			c.retryCall(ctx, activeProvider, apiName, statusCode, responseHeaders, responseBody, retryClient, apiTokenInUse, apiTokens)
 		}, uint32(c.retryOnFailure.retryTimeout))

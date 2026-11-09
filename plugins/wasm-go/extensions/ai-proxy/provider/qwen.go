@@ -26,6 +26,7 @@ const (
 	qwenDefaultDomain                     = "dashscope.aliyuncs.com"
 	qwenChatCompletionPath                = "/api/v1/services/aigc/text-generation/generation"
 	qwenTextEmbeddingPath                 = "/api/v1/services/embeddings/text-embedding/text-embedding"
+	qwenMultimodalEmbeddingPath           = "/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
 	qwenTextRerankPath                    = "/api/v1/services/rerank/text-rerank/text-rerank"
 	qwenCompatibleTextRerankPath          = "/compatible-api/v1/reranks"
 	qwenCompatibleChatCompletionPath      = "/compatible-mode/v1/chat/completions"
@@ -69,29 +70,31 @@ func (m *qwenProviderInitializer) ValidateConfig(config *ProviderConfig) error {
 func (m *qwenProviderInitializer) DefaultCapabilities(qwenEnableCompatible bool) map[string]string {
 	if qwenEnableCompatible {
 		return map[string]string{
-			string(ApiNameChatCompletion):      qwenCompatibleChatCompletionPath,
-			string(ApiNameEmbeddings):          qwenCompatibleTextEmbeddingPath,
-			string(ApiNameCompletion):          qwenCompatibleCompletionsPath,
-			string(ApiNameResponses):           qwenCompatibleResponsesPath,
-			string(ApiNameFiles):               qwenCompatibleFilesPath,
-			string(ApiNameRetrieveFile):        qwenCompatibleRetrieveFilePath,
-			string(ApiNameRetrieveFileContent): qwenCompatibleRetrieveFileContentPath,
-			string(ApiNameBatches):             qwenCompatibleBatchesPath,
-			string(ApiNameRetrieveBatch):       qwenCompatibleRetrieveBatchPath,
-			string(ApiNameQwenAsyncAIGC):       qwenAsyncAIGCPath,
-			string(ApiNameQwenAsyncTask):       qwenAsyncTaskPath,
-			string(ApiNameQwenV1Rerank):        qwenCompatibleTextRerankPath,
-			string(ApiNameQwenV1Conversations): qwenCompatibleConversationsPath,
-			string(ApiNameAnthropicMessages):   qwenAnthropicMessagesPath,
+			string(ApiNameChatCompletion):           qwenCompatibleChatCompletionPath,
+			string(ApiNameEmbeddings):               qwenCompatibleTextEmbeddingPath,
+			string(ApiNameQwenMultimodalEmbeddings): qwenMultimodalEmbeddingPath,
+			string(ApiNameCompletion):               qwenCompatibleCompletionsPath,
+			string(ApiNameResponses):                qwenCompatibleResponsesPath,
+			string(ApiNameFiles):                    qwenCompatibleFilesPath,
+			string(ApiNameRetrieveFile):             qwenCompatibleRetrieveFilePath,
+			string(ApiNameRetrieveFileContent):      qwenCompatibleRetrieveFileContentPath,
+			string(ApiNameBatches):                  qwenCompatibleBatchesPath,
+			string(ApiNameRetrieveBatch):            qwenCompatibleRetrieveBatchPath,
+			string(ApiNameQwenAsyncAIGC):            qwenAsyncAIGCPath,
+			string(ApiNameQwenAsyncTask):            qwenAsyncTaskPath,
+			string(ApiNameQwenV1Rerank):             qwenCompatibleTextRerankPath,
+			string(ApiNameQwenV1Conversations):      qwenCompatibleConversationsPath,
+			string(ApiNameAnthropicMessages):        qwenAnthropicMessagesPath,
 		}
 	} else {
 		return map[string]string{
-			string(ApiNameChatCompletion):    qwenChatCompletionPath,
-			string(ApiNameEmbeddings):        qwenTextEmbeddingPath,
-			string(ApiNameQwenAsyncAIGC):     qwenAsyncAIGCPath,
-			string(ApiNameQwenAsyncTask):     qwenAsyncTaskPath,
-			string(ApiNameQwenV1Rerank):      qwenTextRerankPath,
-			string(ApiNameAnthropicMessages): qwenAnthropicMessagesPath,
+			string(ApiNameChatCompletion):           qwenChatCompletionPath,
+			string(ApiNameEmbeddings):               qwenTextEmbeddingPath,
+			string(ApiNameQwenMultimodalEmbeddings): qwenMultimodalEmbeddingPath,
+			string(ApiNameQwenAsyncAIGC):            qwenAsyncAIGCPath,
+			string(ApiNameQwenAsyncTask):            qwenAsyncTaskPath,
+			string(ApiNameQwenV1Rerank):             qwenTextRerankPath,
+			string(ApiNameAnthropicMessages):        qwenAnthropicMessagesPath,
 		}
 	}
 }
@@ -123,6 +126,9 @@ func (m *qwenProvider) TransformRequestHeaders(ctx wrapper.HttpContext, apiName 
 }
 
 func (m *qwenProvider) TransformRequestBodyHeaders(ctx wrapper.HttpContext, apiName ApiName, body []byte, headers http.Header) ([]byte, error) {
+	if apiName == ApiNameQwenMultimodalEmbeddings {
+		return m.config.defaultTransformRequestBody(ctx, apiName, body)
+	}
 	if m.config.qwenEnableCompatible {
 		modifiedBody := body
 		model := gjson.GetBytes(modifiedBody, "model")
@@ -165,7 +171,7 @@ func (m *qwenProvider) GetProviderType() string {
 func (m *qwenProvider) OnRequestHeaders(ctx wrapper.HttpContext, apiName ApiName) error {
 	m.config.handleRequestHeaders(m, ctx, apiName)
 
-	if m.config.protocol == protocolOriginal {
+	if m.config.protocol == protocolOriginal && !(apiName == ApiNameQwenMultimodalEmbeddings && m.config.IsRetryOnFailureEnabled()) {
 		ctx.DontReadRequestBody()
 		return nil
 	}
@@ -763,6 +769,8 @@ func (m *qwenProvider) GetApiName(path string) ApiName {
 	case strings.Contains(path, qwenTextEmbeddingPath),
 		strings.Contains(path, qwenCompatibleTextEmbeddingPath):
 		return ApiNameEmbeddings
+	case strings.Contains(path, qwenMultimodalEmbeddingPath):
+		return ApiNameQwenMultimodalEmbeddings
 	case strings.Contains(path, qwenCompatibleResponsesPath):
 		return ApiNameResponses
 	case strings.Contains(path, qwenAsyncAIGCPath):

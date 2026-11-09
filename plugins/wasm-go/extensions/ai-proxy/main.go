@@ -81,6 +81,9 @@ var (
 		// Qwen style
 		{provider.PathQwenV1Reranks, provider.ApiNameQwenV1Rerank},
 		{provider.PathQwenV1Conversations, provider.ApiNameQwenV1Conversations},
+		{provider.PathQwenMultimodalEmbeddings, provider.ApiNameQwenMultimodalEmbeddings},
+		// Doubao style
+		{provider.PathDoubaoMultimodalEmbeddings, provider.ApiNameDoubaoMultimodalEmbeddings},
 	}
 	pathPatternToApiName = []pair[*regexp.Regexp, provider.ApiName]{
 		// OpenAI style
@@ -265,6 +268,10 @@ func onHttpRequestHeader(ctx wrapper.HttpContext, pluginConfig config.PluginConf
 			// Provider supports Claude protocol natively, no conversion needed
 			log.Debugf("[Auto Protocol] Claude request detected, provider supports natively, keeping original path: %s, apiName: %s", path.Path, apiName)
 		}
+	}
+
+	if apiName.IsNativeMultimodalEmbeddings() && !providerConfig.IsSupportedAPI(apiName) {
+		apiName = ""
 	}
 
 	if contentType, _ := proxywasm.GetHttpRequestHeader(util.HeaderContentType); contentType != "" && !isSupportedRequestContentType(apiName, contentType) {
@@ -466,14 +473,18 @@ func onHttpResponseHeaders(ctx wrapper.HttpContext, pluginConfig config.PluginCo
 	// the apiToken is removed only when the number of consecutive request failures exceeds the threshold.
 	providerConfig.ResetApiTokenRequestFailureCount(apiTokenInUse)
 
+	apiName, _ := ctx.GetContext(provider.CtxKeyApiName).(provider.ApiName)
 	headers := util.GetResponseHeaders()
 	if handler, ok := activeProvider.(provider.TransformResponseHeadersHandler); ok {
-		apiName, _ := ctx.GetContext(provider.CtxKeyApiName).(provider.ApiName)
 		handler.TransformResponseHeaders(ctx, apiName, headers)
 	} else {
 		providerConfig.DefaultTransformResponseHeaders(ctx, headers)
 	}
 	util.ReplaceResponseHeaders(headers)
+	if apiName.IsNativeMultimodalEmbeddings() {
+		ctx.DontReadResponseBody()
+		return types.ActionContinue
+	}
 
 	_, needHandleBody := activeProvider.(provider.TransformResponseBodyHandler)
 	var needHandleStreamingBody bool

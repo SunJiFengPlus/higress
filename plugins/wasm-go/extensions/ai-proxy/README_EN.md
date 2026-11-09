@@ -25,6 +25,8 @@ The plugin now supports **automatic protocol detection**, allowing seamless comp
 
 > When the request path suffix matches `/v1/embeddings`, it corresponds to text vector scenarios. The request body will be parsed using OpenAI's text vector protocol and then converted to the corresponding LLM vendor's text vector protocol.
 
+> Multimodal embeddings use separate endpoints: `/v1/multimodal-embedding` for Alibaba Cloud and `/v1/embeddings/multimodal` for Volcengine. Each endpoint carries the provider's native JSON protocol.
+
 > When the request path suffix matches `/v1/images/generations`, it corresponds to text-to-image scenarios. The request body will be parsed using OpenAI's image generation protocol and then converted to the corresponding LLM vendor's image generation protocol.
 
 ## Execution Properties
@@ -616,6 +618,55 @@ Response Example:
   }
 }
 ```
+
+### Using Native Multimodal Embeddings
+
+Alibaba Cloud and Volcengine use different multimodal request and response schemas. The plugin preserves native fields while reusing existing model mapping, authentication, and upstream host configuration. Text-only input can also use a multimodal endpoint; the plugin does not infer the API from model names or input content. Existing `/v1/embeddings` behavior remains unchanged for text embeddings.
+
+| Provider | Gateway path suffix | Capability | Default upstream path |
+| --- | --- | --- | --- |
+| `qwen` | `/v1/multimodal-embedding` | `qwen/v1/embeddings/multimodal` | `/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding` |
+| `doubao` | `/v1/embeddings/multimodal` | `doubao/v3/embeddings/multimodal` | `/api/v3/embeddings/multimodal` |
+
+Alibaba Cloud configuration and request:
+
+```yaml
+provider:
+  type: qwen
+  apiTokens: [YOUR_DASHSCOPE_API_TOKEN]
+  modelMapping:
+    embedding-alias: qwen3-vl-embedding
+```
+
+```http
+POST /v1/multimodal-embedding
+Content-Type: application/json
+
+{"model":"embedding-alias","input":{"contents":[{"text":"blue sky"},{"image":"https://example.com/image.jpg"}]},"parameters":{"enable_fusion":true}}
+```
+
+Multimodal embeddings use the native endpoint whether `qwenEnableCompatible` is enabled or disabled. Responses retain `output.embeddings`, `request_id`, and native `usage`. See the [Alibaba Cloud API reference](https://www.alibabacloud.com/help/en/model-studio/multimodal-embedding-api-reference) for model and parameter requirements.
+
+Volcengine configuration and request:
+
+```yaml
+provider:
+  type: doubao
+  apiTokens: [YOUR_ARK_API_TOKEN]
+  modelMapping:
+    embedding-alias: YOUR_ENDPOINT_ID
+```
+
+```http
+POST /v1/embeddings/multimodal
+Content-Type: application/json
+
+{"model":"embedding-alias","input":[{"type":"text","text":"blue sky"},{"type":"image_url","image_url":{"url":"https://example.com/image.jpg"}}]}
+```
+
+Responses retain the native `data` object, vector format, and `usage`; they are not converted to the text embedding API's `data[]`. See the [Volcengine API reference](https://docs.volcengine.com/docs/ark/multimodal-vectorization-api?lang=zh) for model and parameter requirements.
+
+Use `capabilities` to override either default upstream path. With `protocol: original`, call the full native provider path shown above; this mode retains the existing body pass-through behavior and does not map models.
 
 ### Using Qwen Service with Pure Text Context Information
 

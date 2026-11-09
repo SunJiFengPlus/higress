@@ -26,6 +26,8 @@ description: AI 代理插件配置参考
 
 > 请求路径后缀匹配 `/v1/embeddings` 时，对应文本向量场景，会用 OpenAI 的文本向量协议解析请求 Body，再转换为对应 LLM 厂商的文本向量协议
 
+> 多模态向量化使用独立入口：阿里云 `/v1/multimodal-embedding`，火山引擎 `/v1/embeddings/multimodal`。这两个入口使用各厂商的原生 JSON 协议。
+
 > 请求路径后缀匹配 `/v1/images/generations` 时，对应文生图场景，会用 OpenAI 的图片生成协议解析请求 Body，再转换为对应 LLM 厂商的图片生成协议
 
 ## 运行属性
@@ -666,6 +668,55 @@ URL: <http://your-domain/v1/embeddings>
   }
 }
 ```
+
+### 使用原生多模态向量化
+
+阿里云和火山引擎的多模态向量接口具有不同的请求与响应结构。插件透传原生字段，仅复用已有的模型映射、认证和上游地址配置。纯文本输入也可以使用多模态接口；插件不会根据模型名或输入内容自动切换接口。现有 `/v1/embeddings` 继续用于文本向量化。
+
+| 提供商 | 网关路径后缀 | capability | 默认上游路径 |
+| --- | --- | --- | --- |
+| `qwen` | `/v1/multimodal-embedding` | `qwen/v1/embeddings/multimodal` | `/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding` |
+| `doubao` | `/v1/embeddings/multimodal` | `doubao/v3/embeddings/multimodal` | `/api/v3/embeddings/multimodal` |
+
+例如，阿里云配置及请求：
+
+```yaml
+provider:
+  type: qwen
+  apiTokens: [YOUR_DASHSCOPE_API_TOKEN]
+  modelMapping:
+    embedding-alias: qwen3-vl-embedding
+```
+
+```http
+POST /v1/multimodal-embedding
+Content-Type: application/json
+
+{"model":"embedding-alias","input":{"contents":[{"text":"蓝天"},{"image":"https://example.com/image.jpg"}]},"parameters":{"enable_fusion":true}}
+```
+
+`qwenEnableCompatible` 无论是否开启，多模态向量化都使用上述原生端点。响应保留 `output.embeddings`、`request_id` 和原生 `usage`。模型与参数要求见[阿里云文档](https://www.alibabacloud.com/help/en/model-studio/multimodal-embedding-api-reference)。
+
+火山引擎配置及请求：
+
+```yaml
+provider:
+  type: doubao
+  apiTokens: [YOUR_ARK_API_TOKEN]
+  modelMapping:
+    embedding-alias: YOUR_ENDPOINT_ID
+```
+
+```http
+POST /v1/embeddings/multimodal
+Content-Type: application/json
+
+{"model":"embedding-alias","input":[{"type":"text","text":"蓝天"},{"type":"image_url","image_url":{"url":"https://example.com/image.jpg"}}]}
+```
+
+响应保留原生 `data` 对象、向量格式及 `usage`，不会转换为文本向量接口的 `data[]`。模型与参数要求见[火山引擎文档](https://docs.volcengine.com/docs/ark/multimodal-vectorization-api?lang=zh)。
+
+两种能力均可通过 `capabilities` 覆盖默认上游路径。使用 `protocol: original` 时，请求上述完整的厂商原生路径；此模式沿用已有的请求体透传行为，不进行模型映射。
 
 ### 使用通义千问配合纯文本上下文信息
 
