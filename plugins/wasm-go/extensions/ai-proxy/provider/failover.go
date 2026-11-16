@@ -228,6 +228,9 @@ func generateUrl(header http.Header) string {
 }
 
 func (c *ProviderConfig) transformRequestHeadersAndBody(ctx wrapper.HttpContext, activeProvider Provider, headers [][2]string, body []byte) (http.Header, []byte, error) {
+	if apiName, _ := ctx.GetContext(CtxKeyApiName).(ApiName); c.IsOriginal() && apiName.IsMultimodalEmbeddings() {
+		return c.prepareMultimodalRetryHeaders(ctx), body, nil
+	}
 	modifiedHeaders := util.SliceToHeader(headers)
 	if handler, ok := activeProvider.(TransformRequestHeadersHandler); ok {
 		handler.TransformRequestHeaders(ctx, ApiNameChatCompletion, modifiedHeaders)

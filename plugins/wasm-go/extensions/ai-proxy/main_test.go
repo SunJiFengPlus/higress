@@ -66,6 +66,10 @@ func Test_getApiName(t *testing.T) {
 		{"qwen reranks", "/v1/reranks", provider.ApiNameQwenV1Rerank},
 		{"qwen conversations", "/v1/conversations", provider.ApiNameQwenV1Conversations},
 		// Unknown
+		{"unregistered multimodal alias", "/v1/multimodal-embedding", ""},
+		{"unregistered multimodal embeddings alias", "/v1/embeddings/multimodal", ""},
+		{"qwen multimodal requires original", "/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding", ""},
+		{"doubao multimodal requires original", "/api/v3/embeddings/multimodal", ""},
 		{"unknown", "/v1/unknown", ""},
 	}
 	for _, tt := range tests {

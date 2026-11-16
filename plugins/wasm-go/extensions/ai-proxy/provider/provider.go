@@ -74,6 +74,8 @@ const (
 	ApiNameQwenAsyncTask               ApiName = "qwen/v1/tasks"
 	ApiNameQwenV1Rerank                ApiName = "qwen/v1/rerank"
 	ApiNameQwenV1Conversations         ApiName = "qwen/v1/conversations"
+	ApiNameQwenMultimodalEmbeddings    ApiName = "qwen/v1/embeddings/multimodal"
+	ApiNameDoubaoMultimodalEmbeddings  ApiName = "doubao/v3/embeddings/multimodal"
 	ApiNameGeminiGenerateContent       ApiName = "gemini/v1beta/generatecontent"
 	ApiNameGeminiStreamGenerateContent ApiName = "gemini/v1beta/streamgeneratecontent"
 	ApiNameAnthropicMessages           ApiName = "anthropic/v1/messages"
@@ -219,6 +221,10 @@ const (
 	basePathHandlingRemovePrefix basePathHandling = "removePrefix"
 	basePathHandlingPrepend      basePathHandling = "prepend"
 )
+
+func (a ApiName) IsMultimodalEmbeddings() bool {
+	return a == ApiNameQwenMultimodalEmbeddings || a == ApiNameDoubaoMultimodalEmbeddings
+}
 
 type providerInitializer interface {
 	ValidateConfig(*ProviderConfig) error

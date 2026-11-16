@@ -78,6 +78,8 @@ const (
 	PathOpenAICompletions           = "/v1/completions"
 	PathOpenAIEmbeddings            = "/v1/embeddings"
 	PathOpenAIModels                = "/v1/models"
+	PathQwenMultimodalEmbeddings    = "/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
+	PathDoubaoMultimodalEmbeddings  = "/api/v3/embeddings/multimodal"
 	PathGeminiGenerateContent       = "/generateContent"
 	PathGeminiStreamGenerateContent = "/streamGenerateContent"
 
@@ -1068,7 +1070,11 @@ func onHttpResponseBody(ctx wrapper.HttpContext, config AIStatisticsConfig, body
 
 	// Set information about this request
 	if !config.disableOpenaiUsage {
-		if usage := tokenusage.GetTokenUsage(ctx, body); usage.TotalToken > 0 {
+		usage := tokenusage.GetTokenUsage(ctx, body)
+		if isPathEnabled(ctx.Path(), []string{PathQwenMultimodalEmbeddings}) {
+			injectQwenMultimodalTokenUsage(ctx, body, &usage)
+		}
+		if usage.TotalToken > 0 {
 			// Set span attributes for ARMS.
 			setSpanAttribute(ArmsModelName, usage.Model)
 			setSpanAttribute(ArmsInputToken, usage.InputToken)
@@ -1096,6 +1102,17 @@ func onHttpResponseBody(ctx wrapper.HttpContext, config AIStatisticsConfig, body
 	writeMetric(ctx, config, body)
 
 	return types.ActionContinue
+}
+
+func injectQwenMultimodalTokenUsage(ctx wrapper.HttpContext, body []byte, usage *tokenusage.TokenUsage) {
+	// Qwen multimodal embeddings report image tokens separately from input_tokens.
+	if imageToken := wrapper.GetValueFromBody(body, []string{"usage.image_tokens"}); imageToken != nil {
+		usage.InputToken += imageToken.Int()
+		usage.InputTokenDetails["text_tokens"] = gjson.GetBytes(body, "usage.input_tokens").Int()
+		usage.InputTokenDetails["image_tokens"] = imageToken.Int()
+		ctx.SetUserAttribute(tokenusage.CtxKeyInputToken, usage.InputToken)
+		tokenusage.ExtractTotalTokens(ctx, body, usage)
+	}
 }
 
 // fetches the tracing span value from the specified source.

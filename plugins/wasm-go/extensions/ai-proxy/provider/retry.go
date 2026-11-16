@@ -152,6 +152,17 @@ func (c *ProviderConfig) sendRetryRequest(
 	return nil
 }
 
+func (c *ProviderConfig) prepareMultimodalRetryHeaders(ctx wrapper.HttpContext) http.Header {
+	// Reuse the final upstream headers when retrying multimodal embeddings.
+	requestHeaders := util.GetRequestHeaders()
+	headers := make(http.Header)
+	for _, name := range []string{":authority", ":path", util.HeaderContentType} {
+		headers.Set(name, requestHeaders.Get(name))
+	}
+	util.OverwriteRequestAuthorizationHeader(headers, "Bearer "+c.GetApiTokenInUse(ctx))
+	return headers
+}
+
 func createRetryClient() *wrapper.ClusterClient[wrapper.RouteCluster] {
 	retryClient := wrapper.NewClusterClient(wrapper.RouteCluster{})
 	return retryClient
